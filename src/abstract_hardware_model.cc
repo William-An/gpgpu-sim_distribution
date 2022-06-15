@@ -486,6 +486,7 @@ void warp_inst_t::memory_coalescing_arch(bool is_write,
     sector_segment_size = true;
   }
 
+  // TODO: Weili: Set the segment_size based on warp size?
   switch (data_size) {
     case 1:
       segment_size = 32;
@@ -499,6 +500,12 @@ void warp_inst_t::memory_coalescing_arch(bool is_write,
       segment_size = sector_segment_size ? 32 : 128;
       break;
   }
+
+  // NOTE: Weili: Test only, set the gcn3 segement size to be fixed at 64
+  if (m_config->warp_size == 64) {
+    segment_size = 64;
+  }
+
   unsigned subwarp_size = m_config->warp_size / warp_parts;
 
   for (unsigned subwarp = 0; subwarp < warp_parts; subwarp++) {
@@ -600,6 +607,7 @@ void warp_inst_t::memory_coalescing_arch_atomic(bool is_write,
     sector_segment_size = true;
   }
 
+  // TODO: Weili: set segment_size based on warp size
   switch (data_size) {
     case 1:
       segment_size = 32;
@@ -613,6 +621,12 @@ void warp_inst_t::memory_coalescing_arch_atomic(bool is_write,
       segment_size = sector_segment_size ? 32 : 128;
       break;
   }
+
+  // NOTE: Weili: Test only, set the gcn3 segement size to be fixed at 64
+  if (m_config->warp_size == 64) {
+    segment_size = 64;
+  }
+
   unsigned subwarp_size = m_config->warp_size / warp_parts;
 
   for (unsigned subwarp = 0; subwarp < warp_parts; subwarp++) {

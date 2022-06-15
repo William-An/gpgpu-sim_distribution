@@ -361,6 +361,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       }
       break;
     case SECTOR_MISS:
+      // TODO: Weili: Why will normal cache return sector miss here?
       assert(m_config.m_cache_type == SECTOR);
       m_sector_miss++;
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
@@ -1461,7 +1462,11 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
     block->set_modified_on_fill(true, mf->get_access_sector_mask());
   }
 
-  if (mf->get_access_byte_mask().count() == m_config.get_atom_sz()) {
+  // TODO: Weili: This will cause sector miss for GCN3 cache config
+  // TODO: Weili: As the access might not lie perfectly on the 64B cacheline boundary (aka split between two cacheline)
+  // NOTE: Weili: For normal cache, should always able to read?
+  if (mf->get_access_byte_mask().count() == m_config.get_atom_sz()
+    || m_config.m_cache_type == NORMAL) {
     block->set_m_readable(true, mf->get_access_sector_mask());
   } else {
     block->set_m_readable(false, mf->get_access_sector_mask());
