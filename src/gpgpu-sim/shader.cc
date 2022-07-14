@@ -91,6 +91,7 @@ void shader_core_ctx::create_front_pipeline() {
     m_pipeline_reg.push_back(
         register_set(m_config->pipe_widths[j], pipeline_stage_name_decode[j]));
   }
+  // Weili: Special unit ID_OC pipeline regs
   for (int j = 0; j < m_config->m_specialized_unit.size(); j++) {
     m_pipeline_reg.push_back(
         register_set(m_config->m_specialized_unit[j].id_oc_spec_reg_width,
@@ -99,6 +100,7 @@ void shader_core_ctx::create_front_pipeline() {
     m_specilized_dispatch_reg.push_back(
         &m_pipeline_reg[m_pipeline_reg.size() - 1]);
   }
+  // Weili: Special unit OC_EX pipeline regs
   for (int j = 0; j < m_config->m_specialized_unit.size(); j++) {
     m_pipeline_reg.push_back(
         register_set(m_config->m_specialized_unit[j].oc_ex_spec_reg_width,
@@ -245,11 +247,13 @@ void shader_core_ctx::create_exec_pipeline() {
   opndcoll_rfu_t::port_vector_t out_ports;
   opndcoll_rfu_t::uint_vector_t cu_sets;
 
+  // Weili: initialize the register file unit for the shader?
   // configure generic collectors
   m_operand_collector.add_cu_set(
       GEN_CUS, m_config->gpgpu_operand_collector_num_units_gen,
       m_config->gpgpu_operand_collector_num_out_ports_gen);
 
+  // Weili: in_ports and out_ports matched by positions
   for (unsigned i = 0; i < m_config->gpgpu_operand_collector_num_in_ports_gen;
        i++) {
     in_ports.push_back(&m_pipeline_reg[ID_OC_SP]);
@@ -283,6 +287,8 @@ void shader_core_ctx::create_exec_pipeline() {
     in_ports.clear(), out_ports.clear(), cu_sets.clear();
   }
 
+  // Weili: cu sets: collector unit set.
+  // Weili: different exec unit get dedicated collector unit sets
   if (m_config->enable_specialized_operand_collector) {
     m_operand_collector.add_cu_set(
         SP_CUS, m_config->gpgpu_operand_collector_num_units_sp,
@@ -367,6 +373,7 @@ void shader_core_ctx::create_exec_pipeline() {
 
   m_operand_collector.init(m_config->gpgpu_num_reg_banks, this);
 
+  // Weili: Initialize functional simd unit
   m_num_function_units =
       m_config->gpgpu_num_sp_units + m_config->gpgpu_num_dp_units +
       m_config->gpgpu_num_sfu_units + m_config->gpgpu_num_tensor_core_units +
@@ -508,6 +515,7 @@ void shader_core_ctx::init_warps(unsigned cta_id, unsigned start_thread,
     for (unsigned i = start_warp; i < end_warp; ++i) {
       unsigned n_active = 0;
       simt_mask_t active_threads;
+      // Weili: Compute active threads for simt unit
       for (unsigned t = 0; t < m_config->warp_size; t++) {
         unsigned hwtid = i * m_config->warp_size + t;
         if (hwtid < end_thread) {
@@ -519,6 +527,7 @@ void shader_core_ctx::init_warps(unsigned cta_id, unsigned start_thread,
       }
       m_simt_stack[i]->launch(start_pc, active_threads);
 
+      // Weili: recover from previous launch if possible
       if (m_gpu->resume_option == 1 && kernel_id == m_gpu->resume_kernel &&
           ctaid >= m_gpu->resume_CTA && ctaid < m_gpu->checkpoint_CTA_t) {
         char fname[2048];

@@ -399,6 +399,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          OPT_INT32,
                          &gpgpu_operand_collector_num_units_tensor_core,
                          "number of collector units (default = 4)", "4");
+  option_parser_register(opp, "-gpgpu_operand_collector_num_units_uniform_unit",
+                         OPT_INT32,
+                         &gpgpu_operand_collector_num_units_uniform_unit,
+                         "number of collector units (default = 4)", "4");
   option_parser_register(opp, "-gpgpu_operand_collector_num_units_mem",
                          OPT_INT32, &gpgpu_operand_collector_num_units_mem,
                          "number of collector units (default = 2)", "2");
@@ -424,6 +428,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(
       opp, "-gpgpu_operand_collector_num_in_ports_tensor_core", OPT_INT32,
       &gpgpu_operand_collector_num_in_ports_tensor_core,
+      "number of collector unit in ports (default = 1)", "1");
+  option_parser_register(
+      opp, "-gpgpu_operand_collector_num_in_ports_uniform_unit", OPT_INT32,
+      &gpgpu_operand_collector_num_in_ports_uniform_unit,
       "number of collector unit in ports (default = 1)", "1");
   option_parser_register(opp, "-gpgpu_operand_collector_num_in_ports_mem",
                          OPT_INT32, &gpgpu_operand_collector_num_in_ports_mem,
@@ -452,6 +460,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(
       opp, "-gpgpu_operand_collector_num_out_ports_tensor_core", OPT_INT32,
       &gpgpu_operand_collector_num_out_ports_tensor_core,
+      "number of collector unit in ports (default = 1)", "1");
+  option_parser_register(
+      opp, "-gpgpu_operand_collector_num_out_ports_uniform_unit", OPT_INT32,
+      &gpgpu_operand_collector_num_out_ports_uniform_unit,
       "number of collector unit in ports (default = 1)", "1");
   option_parser_register(opp, "-gpgpu_operand_collector_num_out_ports_mem",
                          OPT_INT32, &gpgpu_operand_collector_num_out_ports_mem,
@@ -486,8 +498,8 @@ void shader_core_config::reg_options(class OptionParser *opp) {
       opp, "-gpgpu_pipeline_widths", OPT_CSTR, &pipeline_widths_string,
       "Pipeline widths "
       "ID_OC_SP,ID_OC_DP,ID_OC_INT,ID_OC_SFU,ID_OC_MEM,OC_EX_SP,OC_EX_DP,OC_EX_"
-      "INT,OC_EX_SFU,OC_EX_MEM,EX_WB,ID_OC_TENSOR_CORE,OC_EX_TENSOR_CORE",
-      "1,1,1,1,1,1,1,1,1,1,1,1,1");
+      "INT,OC_EX_SFU,OC_EX_MEM,EX_WB,ID_OC_TENSOR_CORE,OC_EX_TENSOR_CORE,ID_OC_UNIFORM_UNIT,OC_EX_UNIFORM_UNIT",
+      "1,1,1,1,1,1,1,1,1,1,1,1,1,1,1");
   option_parser_register(opp, "-gpgpu_tensor_core_avail", OPT_INT32,
                          &gpgpu_tensor_core_avail,
                          "Tensor Core Available (default=0)", "0");
@@ -506,6 +518,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_num_tensor_core_units", OPT_INT32,
                          &gpgpu_num_tensor_core_units,
                          "Number of tensor_core units (default=1)", "0");
+  option_parser_register(opp, "-gpgpu_num_uniform_units", OPT_INT32,
+                         &gpgpu_num_uniform_units,
+                         "Number of uniform units (default=1)", "0");
   option_parser_register(
       opp, "-gpgpu_num_mem_units", OPT_INT32, &gpgpu_num_mem_units,
       "Number if ldst units (default=1) WARNING: not hooked up to anything",

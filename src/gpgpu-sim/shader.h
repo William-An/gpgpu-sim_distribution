@@ -80,7 +80,8 @@ enum exec_unit_type_t {
   DP = 4,
   INT = 5,
   TENSOR = 6,
-  SPECIALIZED = 7
+  UNIFORM = 7,
+  SPECIALIZED = 8
 };
 
 class thread_ctx_t {
@@ -1384,6 +1385,8 @@ enum pipeline_stage_name_t {
   EX_WB,
   ID_OC_TENSOR_CORE,
   OC_EX_TENSOR_CORE,
+  ID_OC_UNIFORM_UNIT,
+  OC_EX_UNIFORM_UNIT,
   N_PIPELINE_STAGES
 };
 
@@ -1391,7 +1394,10 @@ const char *const pipeline_stage_name_decode[] = {
     "ID_OC_SP",          "ID_OC_DP",         "ID_OC_INT", "ID_OC_SFU",
     "ID_OC_MEM",         "OC_EX_SP",         "OC_EX_DP",  "OC_EX_INT",
     "OC_EX_SFU",         "OC_EX_MEM",        "EX_WB",     "ID_OC_TENSOR_CORE",
-    "OC_EX_TENSOR_CORE", "N_PIPELINE_STAGES"};
+    "OC_EX_TENSOR_CORE", 
+    "ID_OC_UNIFORM_UNIT",
+    "OC_EX_UNIFORM_UNIT",
+    "N_PIPELINE_STAGES"};
 
 struct specialized_unit_params {
   unsigned latency;
@@ -1533,6 +1539,7 @@ class shader_core_config : public core_config {
   int gpgpu_operand_collector_num_units_dp;
   int gpgpu_operand_collector_num_units_sfu;
   int gpgpu_operand_collector_num_units_tensor_core;
+  int gpgpu_operand_collector_num_units_uniform_unit;
   int gpgpu_operand_collector_num_units_mem;
   int gpgpu_operand_collector_num_units_gen;
   int gpgpu_operand_collector_num_units_int;
@@ -1541,6 +1548,7 @@ class shader_core_config : public core_config {
   unsigned int gpgpu_operand_collector_num_in_ports_dp;
   unsigned int gpgpu_operand_collector_num_in_ports_sfu;
   unsigned int gpgpu_operand_collector_num_in_ports_tensor_core;
+  unsigned int gpgpu_operand_collector_num_in_ports_uniform_unit;
   unsigned int gpgpu_operand_collector_num_in_ports_mem;
   unsigned int gpgpu_operand_collector_num_in_ports_gen;
   unsigned int gpgpu_operand_collector_num_in_ports_int;
@@ -1549,6 +1557,7 @@ class shader_core_config : public core_config {
   unsigned int gpgpu_operand_collector_num_out_ports_dp;
   unsigned int gpgpu_operand_collector_num_out_ports_sfu;
   unsigned int gpgpu_operand_collector_num_out_ports_tensor_core;
+  unsigned int gpgpu_operand_collector_num_out_ports_uniform_unit;
   unsigned int gpgpu_operand_collector_num_out_ports_mem;
   unsigned int gpgpu_operand_collector_num_out_ports_gen;
   unsigned int gpgpu_operand_collector_num_out_ports_int;
@@ -1558,6 +1567,7 @@ class shader_core_config : public core_config {
   int gpgpu_num_dp_units;
   int gpgpu_num_sfu_units;
   int gpgpu_num_tensor_core_units;
+  int gpgpu_num_uniform_units;
   int gpgpu_num_mem_units;
   int gpgpu_num_int_units;
 
@@ -1576,6 +1586,7 @@ class shader_core_config : public core_config {
   unsigned max_sfu_latency;
   unsigned max_dp_latency;
   unsigned max_tensor_core_latency;
+  unsigned max_uniform_unit_latency;
 
   unsigned n_simt_cores_per_cluster;
   unsigned n_simt_clusters;
@@ -1629,6 +1640,7 @@ struct shader_core_stats_pod {
   unsigned *m_num_sp_acesses;
   unsigned *m_num_sfu_acesses;
   unsigned *m_num_tensor_core_acesses;
+  unsigned *m_num_uniform_unit_acesses;
   unsigned *m_num_trans_acesses;
   unsigned *m_num_mem_acesses;
   unsigned *m_num_sp_committed;
@@ -1636,6 +1648,7 @@ struct shader_core_stats_pod {
   unsigned *m_num_tlb_accesses;
   unsigned *m_num_sfu_committed;
   unsigned *m_num_tensor_core_committed;
+  unsigned *m_num_uniform_unit_committed;
   unsigned *m_num_mem_committed;
   unsigned *m_read_regfile_acesses;
   unsigned *m_write_regfile_acesses;
@@ -1742,6 +1755,8 @@ class shader_core_stats : public shader_core_stats_pod {
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_tensor_core_acesses =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
+    m_num_uniform_unit_acesses =
+        (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_trans_acesses =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_mem_acesses =
@@ -1764,6 +1779,8 @@ class shader_core_stats : public shader_core_stats_pod {
     m_num_sfu_committed =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_tensor_core_committed =
+        (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
+    m_num_uniform_unit_committed =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_mem_committed =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
