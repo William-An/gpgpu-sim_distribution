@@ -165,7 +165,6 @@ void shader_core_ctx::create_front_pipeline() {
                               IN_L1I_MISS_QUEUE);
 }
 
-// TODO: Weili: Add support for the uniform unit? Also modify the scheduler unit for uniform insts?
 void shader_core_ctx::create_schedulers() {
   m_scoreboard = new Scoreboard(m_sid, m_config->max_warps_per_shader, m_gpu);
 
@@ -1241,7 +1240,9 @@ void scheduler_unit::cycle() {
             if ((pI->op == LOAD_OP) || (pI->op == STORE_OP) ||
                 (pI->op == MEMORY_BARRIER_OP) ||
                 (pI->op == TENSOR_CORE_LOAD_OP) ||
-                (pI->op == TENSOR_CORE_STORE_OP)) {
+                (pI->op == TENSOR_CORE_STORE_OP) ||
+                (pI->op == UNIFORM_UNIT_LOAD_OP) ||
+                (pI->op == UNIFORM_UNIT_STORE_OP)) {
               if (m_mem_out->has_free(m_shader->m_config->sub_core_model,
                                       m_id) &&
                   (!diff_exec_units ||
@@ -1264,6 +1265,10 @@ void scheduler_unit::cycle() {
                   (m_shader->m_config->gpgpu_num_tensor_core_units > 0) &&
                   m_tensor_core_out->has_free(
                       m_shader->m_config->sub_core_model, m_id);
+              bool uniform_unit_pipe_avail =
+                  (m_shader->m_config->gpgpu_num_uniform_units > 0) &&
+                  m_uniform_unit_out->has_free(
+                      m_shader->m_config->sub_core_model, m_id);
               bool dp_pipe_avail =
                   (m_shader->m_config->gpgpu_num_dp_units > 0) &&
                   m_dp_out->has_free(m_shader->m_config->sub_core_model, m_id);
@@ -1273,7 +1278,8 @@ void scheduler_unit::cycle() {
 
               // This code need to be refactored
               if (pI->op != TENSOR_CORE_OP && pI->op != SFU_OP &&
-                  pI->op != DP_OP && !(pI->op >= SPEC_UNIT_START_ID)) {
+                  pI->op != DP_OP && pI->op != UNIFORM_UNIT_OP &&
+                  !(pI->op >= SPEC_UNIT_START_ID)) {
                 bool execute_on_SP = false;
                 bool execute_on_INT = false;
 
@@ -1370,6 +1376,17 @@ void scheduler_unit::cycle() {
                   issued_inst = true;
                   warp_inst_issued = true;
                   previous_issued_inst_exec_type = exec_unit_type_t::TENSOR;
+                }
+              } else if ((pI->op == UNIFORM_UNIT_OP) &&
+                          !(diff_exec_units &&
+                           previous_issued_inst_exec_type ==
+                               exec_unit_type_t::UNIFORM)) {
+                if (uniform_unit_pipe_avail) {
+                  m_shader->issue_warp(*m_uniform_unit_out, pI, active_mask, warp_id, m_id);
+                  issued++;
+                  issued_inst = true;
+                  warp_inst_issued = true;
+                  previous_issued_inst_exec_type = exec_unit_type_t::UNIFORM;
                 }
               } else if ((pI->op >= SPEC_UNIT_START_ID) &&
                          !(diff_exec_units &&
