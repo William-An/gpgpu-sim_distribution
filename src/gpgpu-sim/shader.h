@@ -327,11 +327,13 @@ enum concrete_scheduler {
 class scheduler_unit {  // this can be copied freely, so can be used in std
                         // containers.
  public:
+  // Weili: int_out: to the int Operand collector, start of the pipeline regs
   scheduler_unit(shader_core_stats *stats, shader_core_ctx *shader,
                  Scoreboard *scoreboard, simt_stack **simt,
                  std::vector<shd_warp_t *> *warp, register_set *sp_out,
                  register_set *dp_out, register_set *sfu_out,
                  register_set *int_out, register_set *tensor_core_out,
+                 register_set *uniform_unit_out,
                  std::vector<register_set *> &spec_cores_out,
                  register_set *mem_out, int id)
       : m_supervised_warps(),
@@ -345,6 +347,7 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
         m_sfu_out(sfu_out),
         m_int_out(int_out),
         m_tensor_core_out(tensor_core_out),
+        m_uniform_unit_out(uniform_unit_out),
         m_spec_cores_out(spec_cores_out),
         m_mem_out(mem_out),
         m_id(id) {}
@@ -426,6 +429,7 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
   register_set *m_sfu_out;
   register_set *m_int_out;
   register_set *m_tensor_core_out;
+  register_set *m_uniform_unit_out;
   register_set *m_mem_out;
   std::vector<register_set *> &m_spec_cores_out;
 
@@ -439,10 +443,11 @@ class lrr_scheduler : public scheduler_unit {
                 std::vector<shd_warp_t *> *warp, register_set *sp_out,
                 register_set *dp_out, register_set *sfu_out,
                 register_set *int_out, register_set *tensor_core_out,
+                register_set *uniform_unit_out,
                 std::vector<register_set *> &spec_cores_out,
                 register_set *mem_out, int id)
       : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
-                       sfu_out, int_out, tensor_core_out, spec_cores_out,
+                       sfu_out, int_out, tensor_core_out, uniform_unit_out, spec_cores_out,
                        mem_out, id) {}
   virtual ~lrr_scheduler() {}
   virtual void order_warps();
@@ -458,10 +463,11 @@ class gto_scheduler : public scheduler_unit {
                 std::vector<shd_warp_t *> *warp, register_set *sp_out,
                 register_set *dp_out, register_set *sfu_out,
                 register_set *int_out, register_set *tensor_core_out,
+                register_set *uniform_unit_out,
                 std::vector<register_set *> &spec_cores_out,
                 register_set *mem_out, int id)
       : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
-                       sfu_out, int_out, tensor_core_out, spec_cores_out,
+                       sfu_out, int_out, tensor_core_out, uniform_unit_out, spec_cores_out,
                        mem_out, id) {}
   virtual ~gto_scheduler() {}
   virtual void order_warps();
@@ -477,10 +483,11 @@ class oldest_scheduler : public scheduler_unit {
                    std::vector<shd_warp_t *> *warp, register_set *sp_out,
                    register_set *dp_out, register_set *sfu_out,
                    register_set *int_out, register_set *tensor_core_out,
+                   register_set *uniform_unit_out,
                    std::vector<register_set *> &spec_cores_out,
                    register_set *mem_out, int id)
       : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
-                       sfu_out, int_out, tensor_core_out, spec_cores_out,
+                       sfu_out, int_out, tensor_core_out, uniform_unit_out,spec_cores_out,
                        mem_out, id) {}
   virtual ~oldest_scheduler() {}
   virtual void order_warps();
@@ -497,10 +504,11 @@ class two_level_active_scheduler : public scheduler_unit {
                              register_set *sp_out, register_set *dp_out,
                              register_set *sfu_out, register_set *int_out,
                              register_set *tensor_core_out,
+                             register_set *uniform_unit_out,
                              std::vector<register_set *> &spec_cores_out,
                              register_set *mem_out, int id, char *config_str)
       : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
-                       sfu_out, int_out, tensor_core_out, spec_cores_out,
+                       sfu_out, int_out, tensor_core_out, uniform_unit_out, spec_cores_out,
                        mem_out, id),
         m_pending_warps() {
     unsigned inner_level_readin;
@@ -547,6 +555,7 @@ class swl_scheduler : public scheduler_unit {
                 std::vector<shd_warp_t *> *warp, register_set *sp_out,
                 register_set *dp_out, register_set *sfu_out,
                 register_set *int_out, register_set *tensor_core_out,
+                register_set *uniform_unit_out,
                 std::vector<register_set *> &spec_cores_out,
                 register_set *mem_out, int id, char *config_string);
   virtual ~swl_scheduler() {}
