@@ -1175,6 +1175,23 @@ class tensor_core : public pipelined_simd_unit {
   virtual void issue(register_set &source_reg);
 };
 
+class uniform_unit : public pipelined_simd_unit {
+ public:
+  uniform_unit(register_set *result_port, const shader_core_config *config,
+              shader_core_ctx *core);
+  virtual bool can_issue(const warp_inst_t &inst) const {
+    switch (inst.op) {
+      case UNIFORM_UNIT_OP:
+        break;
+      default:
+        return false;
+    }
+    return pipelined_simd_unit::can_issue(inst);
+  }
+  virtual void active_lanes_in_pipeline();
+  virtual void issue(register_set &source_reg);
+};
+
 class int_unit : public pipelined_simd_unit {
  public:
   int_unit(register_set *result_port, const shader_core_config *config,

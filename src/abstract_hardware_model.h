@@ -82,7 +82,6 @@ typedef unsigned addr_t;
 #define SPECIALIZED_UNIT_NUM 8
 #define SPEC_UNIT_START_ID 100
 
-// TODO: Weili: Add uniform unit OP here
 enum uarch_op_t {
   NO_OP = -1,
   ALU_OP = 1,
@@ -149,6 +148,7 @@ enum operation_pipeline_t {
   INTP__OP,
   SFU__OP,
   TENSOR_CORE__OP,
+  UNIFORM_UNIT__OP,
   MEM__OP,
   SPECIALIZED__OP,
 };

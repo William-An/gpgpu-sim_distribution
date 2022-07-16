@@ -126,7 +126,6 @@ void shader_core_ctx::create_front_pipeline() {
     if (m_config->gpgpu_num_int_units > 0)
       assert(m_config->gpgpu_num_sched_per_core ==
              m_pipeline_reg[ID_OC_INT].get_size());
-    // TODO: Weili: Is this correct?
     if (m_config->gpgpu_num_uniform_units > 0)
       assert(m_config->gpgpu_num_sched_per_core ==
              m_pipeline_reg[ID_OC_UNIFORM_UNIT].get_size());
@@ -255,7 +254,7 @@ void shader_core_ctx::create_schedulers() {
 
 void shader_core_ctx::create_exec_pipeline() {
   // op collector configuration
-  enum { SP_CUS, DP_CUS, SFU_CUS, TENSOR_CORE_CUS, INT_CUS, MEM_CUS, GEN_CUS };
+  enum { SP_CUS, DP_CUS, SFU_CUS, TENSOR_CORE_CUS, UNIFORM_UNIT_CUS, INT_CUS, MEM_CUS, GEN_CUS };
 
   opndcoll_rfu_t::port_vector_t in_ports;
   opndcoll_rfu_t::port_vector_t out_ports;
@@ -279,6 +278,10 @@ void shader_core_ctx::create_exec_pipeline() {
     if (m_config->gpgpu_tensor_core_avail) {
       in_ports.push_back(&m_pipeline_reg[ID_OC_TENSOR_CORE]);
       out_ports.push_back(&m_pipeline_reg[OC_EX_TENSOR_CORE]);
+    }
+    if (m_config->gpgpu_num_uniform_units > 0) {
+      in_ports.push_back(&m_pipeline_reg[ID_OC_UNIFORM_UNIT]);
+      out_ports.push_back(&m_pipeline_reg[OC_EX_UNIFORM_UNIT]);
     }
     if (m_config->gpgpu_num_dp_units > 0) {
       in_ports.push_back(&m_pipeline_reg[ID_OC_DP]);
@@ -314,6 +317,10 @@ void shader_core_ctx::create_exec_pipeline() {
         TENSOR_CORE_CUS,
         m_config->gpgpu_operand_collector_num_units_tensor_core,
         m_config->gpgpu_operand_collector_num_out_ports_tensor_core);
+    m_operand_collector.add_cu_set(
+        UNIFORM_UNIT_CUS,
+        m_config->gpgpu_operand_collector_num_units_uniform_unit,
+        m_config->gpgpu_operand_collector_num_out_ports_uniform_unit);
     m_operand_collector.add_cu_set(
         SFU_CUS, m_config->gpgpu_operand_collector_num_units_sfu,
         m_config->gpgpu_operand_collector_num_out_ports_sfu);
@@ -364,6 +371,16 @@ void shader_core_ctx::create_exec_pipeline() {
       in_ports.clear(), out_ports.clear(), cu_sets.clear();
     }
 
+    for (unsigned i = 0;
+         i < m_config->gpgpu_operand_collector_num_in_ports_uniform_unit; i++) {
+      in_ports.push_back(&m_pipeline_reg[ID_OC_UNIFORM_UNIT]);
+      out_ports.push_back(&m_pipeline_reg[OC_EX_UNIFORM_UNIT]);
+      cu_sets.push_back((unsigned)UNIFORM_UNIT_CUS);
+      cu_sets.push_back((unsigned)GEN_CUS);
+      m_operand_collector.add_port(in_ports, out_ports, cu_sets);
+      in_ports.clear(), out_ports.clear(), cu_sets.clear();
+    }
+
     for (unsigned i = 0; i < m_config->gpgpu_operand_collector_num_in_ports_mem;
          i++) {
       in_ports.push_back(&m_pipeline_reg[ID_OC_MEM]);
@@ -391,6 +408,7 @@ void shader_core_ctx::create_exec_pipeline() {
   m_num_function_units =
       m_config->gpgpu_num_sp_units + m_config->gpgpu_num_dp_units +
       m_config->gpgpu_num_sfu_units + m_config->gpgpu_num_tensor_core_units +
+      m_config->gpgpu_num_uniform_units + 
       m_config->gpgpu_num_int_units + m_config->m_specialized_unit_num +
       1;  // sp_unit, sfu, dp, tensor, int, ldst_unit
   // m_dispatch_port = new enum pipeline_stage_name_t[ m_num_function_units ];
@@ -425,6 +443,12 @@ void shader_core_ctx::create_exec_pipeline() {
     m_fu.push_back(new tensor_core(&m_pipeline_reg[EX_WB], m_config, this));
     m_dispatch_port.push_back(ID_OC_TENSOR_CORE);
     m_issue_port.push_back(OC_EX_TENSOR_CORE);
+  }
+
+  for (int k = 0; k < m_config->gpgpu_num_uniform_units; k++) {
+    m_fu.push_back(new uniform_unit(&m_pipeline_reg[EX_WB], m_config, this));
+    m_dispatch_port.push_back(ID_OC_UNIFORM_UNIT);
+    m_issue_port.push_back(OC_EX_UNIFORM_UNIT);
   }
 
   for (int j = 0; j < m_config->m_specialized_unit.size(); j++) {
@@ -2170,6 +2194,16 @@ tensor_core::tensor_core(register_set *result_port,
   m_name = "TENSOR_CORE";
 }
 
+// TODO: Weili: Need to set the uniform unit latency
+// TODO: Weili: Temporarily set the maximum latency (hardcoded)
+uniform_unit::uniform_unit(register_set *result_port,
+                         const shader_core_config *config,
+                         shader_core_ctx *core)
+    : pipelined_simd_unit(result_port, config, 10,
+                          core) {
+  m_name = "UNIFORM_UNIT";
+}
+
 void sfu::issue(register_set &source_reg) {
   warp_inst_t **ready_reg = source_reg.get_ready();
   // m_core->incexecstat((*ready_reg));
@@ -2184,6 +2218,15 @@ void tensor_core::issue(register_set &source_reg) {
   // m_core->incexecstat((*ready_reg));
 
   (*ready_reg)->op_pipe = TENSOR_CORE__OP;
+  m_core->incsfu_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
+  pipelined_simd_unit::issue(source_reg);
+}
+
+void uniform_unit::issue(register_set &source_reg) {
+  warp_inst_t **ready_reg = source_reg.get_ready();
+  // m_core->incexecstat((*ready_reg));
+
+  (*ready_reg)->op_pipe = UNIFORM_UNIT__OP;
   m_core->incsfu_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
@@ -2244,6 +2287,15 @@ void sfu::active_lanes_in_pipeline() {
 }
 
 void tensor_core::active_lanes_in_pipeline() {
+  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
+  assert(active_count <= m_core->get_config()->warp_size);
+  m_core->incsfuactivelanes_stat(active_count);
+  m_core->incfuactivelanes_stat(active_count);
+  m_core->incfumemactivelanes_stat(active_count);
+}
+
+// TODO: Weili: Uniform should have only one lane?
+void uniform_unit::active_lanes_in_pipeline() {
   unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
   assert(active_count <= m_core->get_config()->warp_size);
   m_core->incsfuactivelanes_stat(active_count);
@@ -3358,6 +3410,7 @@ unsigned int shader_core_config::max_cta(const kernel_info_t &k) const {
   return result;
 }
 
+// TODO: Weili: Add uniform unit latency?
 void shader_core_config::set_pipeline_latency() {
   // calculate the max latency  based on the input
 
