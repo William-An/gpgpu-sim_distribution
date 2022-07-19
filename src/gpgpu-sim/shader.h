@@ -569,6 +569,8 @@ class swl_scheduler : public scheduler_unit {
   unsigned m_num_warps_to_limit;
 };
 
+// TODO: Weili: Need to have a uniform RF implemented in this class
+// TODO: Weili: probably divide the register range? 0~255 is vector and 256~512 is scalar?
 class opndcoll_rfu_t {  // operand collector based register file unit
  public:
   // constructors
@@ -587,7 +589,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   // modifiers
   bool writeback(warp_inst_t &warp);
 
-  void step() {
+  void step(unsigned regfile_port_id) {
+    // TODO: Weili: Only process the banks associated with the current regfile port id
     dispatch_ready_cu();
     allocate_reads();
     for (unsigned p = 0; p < m_in_ports.size(); p++) allocate_cu(p);
@@ -607,6 +610,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   shader_core_ctx *shader_core() { return m_shader; }
 
  private:
+  // Weili: banks should be free in next cycle
   void process_banks() { m_arbiter.reset_alloction(); }
 
   void dispatch_ready_cu();
@@ -617,6 +621,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
 
   class collector_unit_t;
 
+  // TODO: Weili: need to augment this class
   class op_t {
    public:
     op_t() { m_valid = false; }
@@ -814,7 +819,10 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       for (unsigned i = 0; i < MAX_REG_OPERANDS * 2; i++) {
         const op_t &op = src[i];
         if (op.valid()) {
+          // TODO: Weili: Can let different RF have different bank starting number
+          // TODO: Weili: so that they could map to different banks without interference
           unsigned bank = op.get_bank();
+          // Weili: Push this operand read request to the corresponding banks
           m_queue[bank].push_back(op);
         }
       }
@@ -895,6 +903,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
               bool m_sub_core_model, unsigned num_banks_per_sched);
     bool allocate(register_set *pipeline_reg, register_set *output_reg);
 
+    // Weili: mark this operand as ready
     void collect_operand(unsigned op) { m_not_ready.reset(op); }
     unsigned get_num_operands() const { return m_warp->get_num_operands(); }
     unsigned get_num_regs() const { return m_warp->get_num_regs(); }

@@ -2646,8 +2646,11 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
 */
 void ldst_unit::cycle() {
   writeback();
+  // TODO: Weili: Different RF should have different ports?
+  // TODO: Weili: Need to make sure the stepping of collector only
+  // TODO: Weili: process the RF with respect to the port number (by passing the variable `i` here to step)
   for (int i = 0; i < m_config->reg_file_port_throughput; ++i)
-    m_operand_collector->step();
+    m_operand_collector->step(i);
   for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++)
     if (m_pipeline_reg[stage]->empty() && !m_pipeline_reg[stage + 1]->empty())
       move_warp(m_pipeline_reg[stage], m_pipeline_reg[stage + 1]);
@@ -3546,6 +3549,7 @@ std::list<opndcoll_rfu_t::op_t> opndcoll_rfu_t::arbiter_t::allocate_reads() {
     if (_inmatch[i] != -1) {
       if (!m_allocated_bank[i].is_write()) {
         unsigned bank = (unsigned)i;
+        // Weili: Extract the ready operand from register banks
         op_t &op = m_queue[bank].front();
         result.push_back(op);
         m_queue[bank].pop_front();
@@ -4066,6 +4070,7 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
 void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
   input_port_t &inp = m_in_ports[port_num];
   for (unsigned i = 0; i < inp.m_in.size(); i++) {
+    // Weili: If an inst is ready to be issued
     if ((*inp.m_in[i]).has_ready()) {
       // find a free cu
       for (unsigned j = 0; j < inp.m_cu_sets.size(); j++) {
@@ -4074,6 +4079,7 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
         for (unsigned k = 0; k < cu_set.size(); k++) {
           if (cu_set[k].is_free()) {
             collector_unit_t *cu = &cu_set[k];
+            // Weili: Try to find a cu to handle this ready inst
             allocated = cu->allocate(inp.m_in[i], inp.m_out[i]);
             m_arbiter.add_read_requests(cu);
             break;
@@ -4089,7 +4095,7 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
 
 void opndcoll_rfu_t::allocate_reads() {
   // process read requests that do not have conflicts
-  std::list<op_t> allocated = m_arbiter.allocate_reads();
+  std::list<op_t> allocated = m_arbiter.allocate_reads(); // Get the ready operands
   std::map<unsigned, op_t> read_ops;
   for (std::list<op_t>::iterator r = allocated.begin(); r != allocated.end();
        r++) {
@@ -4099,6 +4105,7 @@ void opndcoll_rfu_t::allocate_reads() {
     unsigned bank =
         register_bank(reg, wid, m_num_banks, m_bank_warp_shift, sub_core_model,
                       m_num_banks_per_sched, rr.get_sid());
+    // Weili: Mark banks for the reads
     m_arbiter.allocate_for_read(bank, rr);
     read_ops[bank] = rr;
   }
@@ -4107,6 +4114,7 @@ void opndcoll_rfu_t::allocate_reads() {
     op_t &op = r->second;
     unsigned cu = op.get_oc_id();
     unsigned operand = op.get_operand();
+    // Mark this operand as done for the CU
     m_cu[cu]->collect_operand(operand);
     if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
       unsigned active_count = 0;
@@ -4177,10 +4185,14 @@ bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
           (*pipeline_reg)
               ->arch_reg.src[op];  // this math needs to match that used in
                                    // function_info::ptx_decode_inst
+      // TODO: Weili: Mark different register file range here?
+      // TODO: Weili: Can specify the number of banks for each RF?
+      // TODO: Weili: Add an regfile_id params in the op_t class?
       if (reg_num >= 0) {          // valid register
         m_src_op[op] = op_t(this, op, reg_num, m_num_banks, m_bank_warp_shift,
                             m_sub_core_model, m_num_banks_per_sched,
                             (*pipeline_reg)->get_schd_id());
+        // Weili: Mark this operand as not ready
         m_not_ready.set(op);
       } else
         m_src_op[op] = op_t();
