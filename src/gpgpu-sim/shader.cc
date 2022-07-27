@@ -3956,12 +3956,33 @@ void opndcoll_rfu_t::add_port(port_vector_t &input, port_vector_t &output,
   m_in_ports.push_back(input_port_t(input, output, cu_sets));
 }
 
-void opndcoll_rfu_t::init(unsigned num_banks, shader_core_ctx *shader) {
+void opndcoll_rfu_t::init(unsigned num_banks, unsigned num_regfiles, 
+            uint_vector_t &regfile_num_ports, uint_vector_t &regfile_num_banks, uint_vector_t &regfile_num_registers,
+            shader_core_ctx *shader) {
   m_shader = shader;
-  m_arbiter.init(m_cu.size(), num_banks);
+
+  m_num_regfiles = num_regfiles;
+  m_regfile_num_ports = regfile_num_ports;
+  m_regfile_num_banks = regfile_num_banks;
+  m_regfile_num_registers = regfile_num_registers;
+  assert(m_num_regfiles > 0);
+  assert(m_num_regfiles = m_regfile_num_ports.size());
+  assert(m_num_regfiles = m_regfile_num_banks.size());
+  assert(m_num_regfiles = m_regfile_num_registers.size());
+
+  // TODO: Weili: Remove the single arbiter
+  // m_arbiter.init(m_cu.size(), num_banks);
+
+  // Weili: init arbiter for each regfile
+  m_arbiters.reserve(m_num_regfiles);
+  for (int i = 0; i < m_num_regfiles; i++) {
+    arbiter_t& arbiter = m_arbiters[i];
+    // Assuming all operand collectors are connected to all regfiles
+    arbiter.init(m_cu.size(), m_regfile_num_banks[i]);
+  }
+
   // for( unsigned n=0; n<m_num_ports;n++ )
   //    m_dispatch_units[m_output[n]].init( m_num_collector_units[n] );
-  m_num_banks = num_banks;
   m_bank_warp_shift = 0;
   m_warp_size = shader->get_config()->warp_size;
   m_bank_warp_shift = (unsigned)(int)(log(m_warp_size + 0.5) / log(2.0));
@@ -3969,14 +3990,25 @@ void opndcoll_rfu_t::init(unsigned num_banks, shader_core_ctx *shader) {
 
   sub_core_model = shader->get_config()->sub_core_model;
   m_num_warp_sceds = shader->get_config()->gpgpu_num_sched_per_core;
-  if (sub_core_model)
-    assert(num_banks % shader->get_config()->gpgpu_num_sched_per_core == 0);
-  m_num_banks_per_sched =
-      num_banks / shader->get_config()->gpgpu_num_sched_per_core;
+  if (sub_core_model) {
+    // Make sure every regfile has banks in multiple of scheduler per core
+    // in sub core model mode
+    for (auto it = m_regfile_num_banks.begin(); 
+              it != m_regfile_num_banks.end();
+              it++) {
+      assert(*it % shader->get_config()->gpgpu_num_sched_per_core == 0);
+    }
+  }
+  
+  m_regfile_num_banks_per_sched.reserve(m_num_regfiles);
+  for (int i = 0; i < m_num_regfiles; i++) {
+    m_regfile_num_banks_per_sched[i] = m_regfile_num_banks[i] / shader->get_config()->gpgpu_num_sched_per_core;
+  }
 
   for (unsigned j = 0; j < m_cu.size(); j++) {
-    m_cu[j]->init(j, num_banks, m_bank_warp_shift, shader->get_config(), this,
-                  sub_core_model, m_num_banks_per_sched);
+    m_cu[j]->init(j, m_regfile_num_banks, m_bank_warp_shift,
+                  shader->get_config(), this, sub_core_model, 
+                  m_regfile_num_banks_per_sched);
   }
   m_initialized = true;
 }
@@ -4000,21 +4032,51 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
   for (unsigned op = 0; op < MAX_REG_OPERANDS; op++) {
     int reg_num = inst.arch_reg.dst[op];  // this math needs to match that used
                                           // in function_info::ptx_decode_inst
+    // Weili: Map the reg number to different regfile and
+    // Weili: use the corresponding arbiter
     if (reg_num >= 0) {                   // valid register
-      unsigned bank = register_bank(reg_num, inst.warp_id(), m_num_banks,
+      // Weili: Find regfile this reg num belong to and the corresponding arbiter
+      arbiter_t& arbiter_in_used;
+      int true_reg_num = reg_num; // The actual reg number in the  register file this register belongs to
+      int regfile_idx = -1; // The register file index
+      for (int i = 0; i < m_num_regfiles; i++) {
+        int reg_count = m_regfile_num_registers[i];
+        if (true_reg_num - reg_count >= 0) {
+          true_reg_num -= reg_count;
+        } else {
+          arbiter_in_used = m_arbiters[i];
+          regfile_idx = i;
+          break;
+        }
+      }
+
+      // Abort when the register number is out of all range
+      assert(regfile_idx != -1);
+
+      // Find the bank for this register in its register file
+      unsigned true_num_banks = m_regfile_num_banks[regfile_idx];
+      unsigned true_num_banks_per_sched = m_regfile_num_banks_per_sched[regfile_idx];
+      unsigned bank = register_bank(true_reg_num, inst.warp_id(), 
+                                    true_num_banks,
                                     m_bank_warp_shift, sub_core_model,
-                                    m_num_banks_per_sched, inst.get_schd_id());
-      if (m_arbiter.bank_idle(bank)) {
-        m_arbiter.allocate_bank_for_write(
+                                    true_num_banks_per_sched, 
+                                    inst.get_schd_id());
+
+      // Weili: op_t class stay the same for multiple regfile design
+      if (arbiter_in_used.bank_idle(bank)) {
+        arbiter_in_used.allocate_bank_for_write(
             bank,
-            op_t(&inst, reg_num, m_num_banks, m_bank_warp_shift, sub_core_model,
-                 m_num_banks_per_sched, inst.get_schd_id()));
+            op_t(&inst, reg_num, true_num_banks, m_bank_warp_shift, sub_core_model,
+                 true_num_banks_per_sched, inst.get_schd_id()));
         inst.arch_reg.dst[op] = -1;
       } else {
+        // Cannot write back this inst at this moment due to bank conflict
         return false;
       }
     }
   }
+
+  // Update stats on registerfile writes
   for (unsigned i = 0; i < (unsigned)regs.size(); i++) {
     if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
       unsigned active_count = 0;
@@ -4042,6 +4104,7 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
     dispatch_unit_t &du = m_dispatch_units[p];
     collector_unit_t *cu = du.find_ready();
     if (cu) {
+      // Weili: Update stats for non register file operands
       for (unsigned i = 0; i < (cu->get_num_operands() - cu->get_num_regs());
            i++) {
         if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
@@ -4062,6 +4125,8 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
               m_shader->get_config()->warp_size);  // cu->get_active_count());
         }
       }
+
+      // Move the ready inst to functional unit
       cu->dispatch();
     }
   }
@@ -4095,43 +4160,57 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
 
 void opndcoll_rfu_t::allocate_reads() {
   // process read requests that do not have conflicts
-  std::list<op_t> allocated = m_arbiter.allocate_reads(); // Get the ready operands
-  std::map<unsigned, op_t> read_ops;
-  for (std::list<op_t>::iterator r = allocated.begin(); r != allocated.end();
-       r++) {
-    const op_t &rr = *r;
-    unsigned reg = rr.get_reg();
-    unsigned wid = rr.get_wid();
-    unsigned bank =
-        register_bank(reg, wid, m_num_banks, m_bank_warp_shift, sub_core_model,
-                      m_num_banks_per_sched, rr.get_sid());
-    // Weili: Mark banks for the reads
-    m_arbiter.allocate_for_read(bank, rr);
-    read_ops[bank] = rr;
-  }
-  std::map<unsigned, op_t>::iterator r;
-  for (r = read_ops.begin(); r != read_ops.end(); ++r) {
-    op_t &op = r->second;
-    unsigned cu = op.get_oc_id();
-    unsigned operand = op.get_operand();
-    // Mark this operand as done for the CU
-    m_cu[cu]->collect_operand(operand);
-    if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-      unsigned active_count = 0;
-      for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-           i = i + m_shader->get_config()->n_regfile_gating_group) {
-        for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
-             j++) {
-          if (op.get_active_mask().test(i + j)) {
-            active_count += m_shader->get_config()->n_regfile_gating_group;
-            break;
+  // TODO: Weili: Process arbiters associated with the port
+  for (auto it_arbiter = m_arbiters.begin(); 
+       it_arbiter != m_arbiters.end(); 
+       it_arbiter++) {
+
+    arbiter_t& arbiter = *it_arbiter;
+    std::list<op_t> allocated = arbiter.allocate_reads(); // Get the ready operands
+    std::map<unsigned, op_t> read_ops;
+    for (std::list<op_t>::iterator r = allocated.begin(); r != allocated.end();
+        r++) {
+      const op_t &rr = *r;
+      unsigned reg = rr.get_reg();
+      unsigned wid = rr.get_wid();
+      // Can safely use the bank num of the op_t rr as it is passed in
+      // from opndcoll_rfu_t::collector_unit_t::allocate
+      // and we have calculated the bank number during op_t init
+      // unsigned bank =
+      //     register_bank(reg, wid, m_num_banks, m_bank_warp_shift, sub_core_model,
+      //     m_num_banks_per_sched, rr.get_sid());
+      unsigned bank = rr.get_bank();
+
+      // Weili: Mark banks for the reads
+      arbiter.allocate_for_read(bank, rr);
+      read_ops[bank] = rr;
+    }
+    std::map<unsigned, op_t>::iterator r;
+    for (r = read_ops.begin(); r != read_ops.end(); ++r) {
+      op_t &op = r->second;
+      unsigned cu = op.get_oc_id();
+      unsigned operand = op.get_operand();
+      // Mark this operand as done for the CU
+      m_cu[cu]->collect_operand(operand);
+
+      // Update stats on register file reads
+      if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
+        unsigned active_count = 0;
+        for (unsigned i = 0; i < m_shader->get_config()->warp_size;
+            i = i + m_shader->get_config()->n_regfile_gating_group) {
+          for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
+              j++) {
+            if (op.get_active_mask().test(i + j)) {
+              active_count += m_shader->get_config()->n_regfile_gating_group;
+              break;
+            }
           }
         }
+        m_shader->incregfile_reads(active_count);
+      } else {
+        m_shader->incregfile_reads(
+            m_shader->get_config()->warp_size);  // op.get_active_count());
       }
-      m_shader->incregfile_reads(active_count);
-    } else {
-      m_shader->incregfile_reads(
-          m_shader->get_config()->warp_size);  // op.get_active_count());
     }
   }
 }
@@ -4155,20 +4234,18 @@ void opndcoll_rfu_t::collector_unit_t::dump(
   }
 }
 
-void opndcoll_rfu_t::collector_unit_t::init(unsigned n, unsigned num_banks,
-                                            unsigned log2_warp_size,
-                                            const core_config *config,
-                                            opndcoll_rfu_t *rfu,
-                                            bool sub_core_model,
-                                            unsigned banks_per_sched) {
+void opndcoll_rfu_t::collector_unit_t::init(unsigned n, uint_vector_t& regfile_num_banks, 
+                                            unsigned log2_warp_size, const core_config *config, 
+                                            opndcoll_rfu_t *rfu, bool m_sub_core_model, 
+                                            uint_vector_t& regfile_num_banks_per_sched) {
   m_rfu = rfu;
   m_cuid = n;
-  m_num_banks = num_banks;
   assert(m_warp == NULL);
   m_warp = new warp_inst_t(config);
   m_bank_warp_shift = log2_warp_size;
   m_sub_core_model = sub_core_model;
-  m_num_banks_per_sched = banks_per_sched;
+  m_regfile_num_banks = regfile_num_banks;
+  m_regfile_num_banks_per_sched = banks_per_regfile_per_sched;
 }
 
 bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
@@ -4181,16 +4258,37 @@ bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
   if ((pipeline_reg) and !((*pipeline_reg)->empty())) {
     m_warp_id = (*pipeline_reg)->warp_id();
     for (unsigned op = 0; op < MAX_REG_OPERANDS; op++) {
+      // Weili: This is the raw (mapped) reg number, need to convert to
+      // Weili: reg number for each individual register file
       int reg_num =
           (*pipeline_reg)
               ->arch_reg.src[op];  // this math needs to match that used in
                                    // function_info::ptx_decode_inst
-      // TODO: Weili: Mark different register file range here?
-      // TODO: Weili: Can specify the number of banks for each RF?
-      // TODO: Weili: Add an regfile_id params in the op_t class?
+      // Weili: Find the correct register number and banks for the correct regfile
       if (reg_num >= 0) {          // valid register
-        m_src_op[op] = op_t(this, op, reg_num, m_num_banks, m_bank_warp_shift,
-                            m_sub_core_model, m_num_banks_per_sched,
+        // Weili: Convert the reg num to the actual one in the 
+        // Weili: register file and find the register file index
+        int true_reg_num = reg_num; // The actual reg number in the  register file this register belongs to
+        int regfile_idx = -1; // The register file index
+        for (int i = 0; i < m_num_regfiles; i++) {
+          int reg_count = m_regfile_num_registers[i];
+          if (true_reg_num - reg_count >= 0) {
+            true_reg_num -= reg_count;
+          } else {
+            regfile_idx = i;
+            break;
+          }
+        }
+
+        // Abort when the register number is out of all range
+        assert(regfile_idx != -1);
+
+        // Find the bank for this register in its register file
+        unsigned true_num_banks = m_regfile_num_banks[regfile_idx];
+        unsigned true_num_banks_per_sched = m_regfile_num_banks_per_sched[regfile_idx];
+
+        m_src_op[op] = op_t(this, op, true_reg_num, true_num_banks, m_bank_warp_shift,
+                            m_sub_core_model, true_num_banks_per_sched,
                             (*pipeline_reg)->get_schd_id());
         // Weili: Mark this operand as not ready
         m_not_ready.set(op);

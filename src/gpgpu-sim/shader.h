@@ -584,16 +584,21 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   typedef std::vector<unsigned int> uint_vector_t;
   void add_port(port_vector_t &input, port_vector_t &ouput,
                 uint_vector_t cu_sets);
-  void init(unsigned num_banks, shader_core_ctx *shader);
+  void init(unsigned num_banks, unsigned num_regfiles, 
+            uint_vector_t &regfile_num_ports, uint_vector_t &regfile_num_banks, 
+            uint_vector_t &regfile_num_registers,
+            shader_core_ctx *shader);
 
   // modifiers
   bool writeback(warp_inst_t &warp);
 
   void step(unsigned regfile_port_id) {
-    // TODO: Weili: Only process the banks associated with the current regfile port id
+    // TODO: Weili: Only process the register file associated with the current regfile port id
     dispatch_ready_cu();
     allocate_reads();
     for (unsigned p = 0; p < m_in_ports.size(); p++) allocate_cu(p);
+
+    // Weili: banks should be free in next cycle
     process_banks();
   }
 
@@ -604,17 +609,27 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       fprintf(fp, "   CU-%2u: ", n);
       m_cu[n]->dump(fp, m_shader);
     }
-    m_arbiter.dump(fp);
+    fprintf(fp, "Dumping all arbiters:\n");
+    for (int i = 0; i < m_num_regfiles; i++) {
+      fprintf(fp, "\tArbiter %d:\n", i);
+      m_arbiters[i].dump(fp);
+    }
   }
 
   shader_core_ctx *shader_core() { return m_shader; }
 
  private:
-  // Weili: banks should be free in next cycle
-  void process_banks() { m_arbiter.reset_alloction(); }
+  void process_banks() { 
+    for (int i = 0; i < m_num_regfiles; i++)
+      m_arbiters[i].reset_alloction(); 
+  }
 
-  void dispatch_ready_cu();
+  // Dispatch the insts that finish collecting all operands
+  void dispatch_ready_cu(); 
+  // From input port, find an inst that is ready to enter
+  // operand collector stage and assign a cu to it
   void allocate_cu(unsigned port);
+  // process read requests that do not have conflicts
   void allocate_reads();
 
   // types
@@ -812,6 +827,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     }
 
     // modifiers
+    // Weili: Finds the conflict-free reads from arbiter read request queue (m_queue)
     std::list<op_t> allocate_reads();
 
     void add_read_requests(collector_unit_t *cu) {
@@ -881,7 +897,6 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       m_src_op = new op_t[MAX_REG_OPERANDS * 2];
       m_not_ready.reset();
       m_warp_id = -1;
-      m_num_banks = 0;
       m_bank_warp_shift = 0;
     }
     // accessors
@@ -898,15 +913,20 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     unsigned get_id() const { return m_cuid; }  // returns CU hw id
 
     // modifiers
-    void init(unsigned n, unsigned num_banks, unsigned log2_warp_size,
+    void init(unsigned n, uint_vector_t& regfile_num_banks, unsigned log2_warp_size,
               const core_config *config, opndcoll_rfu_t *rfu,
-              bool m_sub_core_model, unsigned num_banks_per_sched);
+              bool m_sub_core_model, uint_vector_t& regfile_num_banks_per_sched);
+    
+    // Move forward inst from previous stage to operand collector stage
+    // and find the src registers needed to read
     bool allocate(register_set *pipeline_reg, register_set *output_reg);
 
     // Weili: mark this operand as ready
     void collect_operand(unsigned op) { m_not_ready.reset(op); }
     unsigned get_num_operands() const { return m_warp->get_num_operands(); }
     unsigned get_num_regs() const { return m_warp->get_num_regs(); }
+
+    // Move inst from operand collector stage to execution stage
     void dispatch();
     bool is_free() { return m_free; }
 
@@ -919,11 +939,12 @@ class opndcoll_rfu_t {  // operand collector based register file unit
         *m_output_register;  // pipeline register to issue to when ready
     op_t *m_src_op;
     std::bitset<MAX_REG_OPERANDS * 2> m_not_ready;
-    unsigned m_num_banks;
+    
     unsigned m_bank_warp_shift;
     opndcoll_rfu_t *m_rfu;
 
-    unsigned m_num_banks_per_sched;
+    uint_vector_t m_regfile_num_banks;            // Banks per regfile
+    uint_vector_t m_regfile_num_banks_per_sched;  // Banks per regfile per scheduler
     bool m_sub_core_model;
   };
 
@@ -959,15 +980,24 @@ class opndcoll_rfu_t {  // operand collector based register file unit
 
   unsigned m_num_collector_sets;
   // unsigned m_num_collectors;
-  unsigned m_num_banks;
+  // unsigned m_num_banks;  // TODO: Weili: to be remove
   unsigned m_bank_warp_shift;
   unsigned m_warp_size;
   std::vector<collector_unit_t *> m_cu;
-  arbiter_t m_arbiter;
+  // arbiter_t m_arbiter; // TODO: Weili: to be remove
+  std::vector<arbiter_t> m_arbiters;  // Each register file has one arbiter
 
-  unsigned m_num_banks_per_sched;
+  // unsigned m_num_banks_per_sched;  // TODO: Weili: to be remove
   unsigned m_num_warp_sceds;
   bool sub_core_model;
+
+  // Weili: Multiple RF implementation variables
+  // Weili: Assuming operand collectors are connected to all register files
+  unsigned m_num_regfiles;            // Total number of register file
+  uint_vector_t m_regfile_num_ports;  // Number of ports per register file 
+  uint_vector_t m_regfile_num_banks;  // Number of banks per register file
+  uint_vector_t m_regfile_num_registers;  // Number of registers per register file
+  uint_vector_t m_regfile_num_banks_per_sched;  // Number of banks per register file per scheduler
 
   // unsigned m_num_ports;
   // std::vector<warp_inst_t**> m_input;
