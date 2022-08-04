@@ -575,7 +575,6 @@ class opndcoll_rfu_t {  // operand collector based register file unit
  public:
   // constructors
   opndcoll_rfu_t() {
-    m_num_banks = 0;
     m_shader = NULL;
     m_initialized = false;
   }
@@ -642,7 +641,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     op_t() { m_valid = false; }
     op_t(collector_unit_t *cu, unsigned op, unsigned reg, unsigned num_banks,
          unsigned bank_warp_shift, bool sub_core_model,
-         unsigned banks_per_sched, unsigned sched_id) {
+         unsigned banks_per_sched, unsigned sched_id, int regfile_id) {
       m_valid = true;
       m_warp = NULL;
       m_cu = cu;
@@ -651,10 +650,11 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       m_shced_id = sched_id;
       m_bank = register_bank(reg, cu->get_warp_id(), num_banks, bank_warp_shift,
                              sub_core_model, banks_per_sched, sched_id);
+      m_regfile_id = regfile_id;
     }
     op_t(const warp_inst_t *warp, unsigned reg, unsigned num_banks,
          unsigned bank_warp_shift, bool sub_core_model,
-         unsigned banks_per_sched, unsigned sched_id) {
+         unsigned banks_per_sched, unsigned sched_id, int regfile_id) {
       m_valid = true;
       m_warp = warp;
       m_register = reg;
@@ -663,6 +663,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       m_shced_id = sched_id;
       m_bank = register_bank(reg, warp->warp_id(), num_banks, bank_warp_shift,
                              sub_core_model, banks_per_sched, sched_id);
+      m_regfile_id = regfile_id;
     }
 
     // accessors
@@ -706,6 +707,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     }
     unsigned get_oc_id() const { return m_cu->get_id(); }
     unsigned get_bank() const { return m_bank; }
+    int get_regfile() const {return m_regfile_id; }
     unsigned get_operand() const { return m_operand; }
     void dump(FILE *fp) const {
       if (m_cu)
@@ -732,6 +734,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     unsigned m_register;
     unsigned m_bank;
     unsigned m_shced_id;  // scheduler id that has issued this inst
+    int m_regfile_id;  // Register file id/index that this operand belongs to, if < 0 means invalid
   };
 
   enum alloc_t {
@@ -786,12 +789,15 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       _outmatch = NULL;
       _request = NULL;
       m_last_cu = 0;
+      m_regfile_id = -1;
     }
-    void init(unsigned num_cu, unsigned num_banks) {
+    void init(unsigned num_cu, unsigned num_banks, int regfile_id) {
       assert(num_cu > 0);
       assert(num_banks > 0);
+      assert(regfile_id >= 0);
       m_num_collectors = num_cu;
       m_num_banks = num_banks;
+      m_regfile_id = regfile_id;
       _inmatch = new int[m_num_banks];
       _outmatch = new int[m_num_collectors];
       _request = new int *[m_num_banks];
@@ -834,11 +840,12 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       const op_t *src = cu->get_operands();
       for (unsigned i = 0; i < MAX_REG_OPERANDS * 2; i++) {
         const op_t &op = src[i];
-        if (op.valid()) {
-          // TODO: Weili: Can let different RF have different bank starting number
-          // TODO: Weili: so that they could map to different banks without interference
+
+        // Weili: Skip the op if it is not valid
+        // Weili: Or does not belong to this reg file
+        if (op.valid() && op.get_regfile() == m_regfile_id) {
           unsigned bank = op.get_bank();
-          // Weili: Push this operand read request to the corresponding banks
+          // Weili: Push this operand read request to the corresponding banks waiting to be read
           m_queue[bank].push_back(op);
         }
       }
@@ -872,6 +879,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     int *_inmatch;
     int *_outmatch;
     int **_request;
+
+    int m_regfile_id;  // Register file id this arbiter belongs to
   };
 
   class input_port_t {
@@ -915,7 +924,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     // modifiers
     void init(unsigned n, uint_vector_t& regfile_num_banks, unsigned log2_warp_size,
               const core_config *config, opndcoll_rfu_t *rfu,
-              bool m_sub_core_model, uint_vector_t& regfile_num_banks_per_sched);
+              bool sub_core_model, uint_vector_t& regfile_num_banks_per_sched);
     
     // Move forward inst from previous stage to operand collector stage
     // and find the src registers needed to read

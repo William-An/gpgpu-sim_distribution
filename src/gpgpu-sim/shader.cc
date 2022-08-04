@@ -402,7 +402,15 @@ void shader_core_ctx::create_exec_pipeline() {
     }
   }
 
-  m_operand_collector.init(m_config->gpgpu_num_reg_banks, this);
+  // TODO: Weili: Need to create option parser and pass from the config
+  // TODO: Weili: currently just hard-coded for testing
+  // m_operand_collector.init(m_config->gpgpu_num_reg_banks, this);
+  unsigned num_regfiles = 2;
+  opndcoll_rfu_t::uint_vector_t regfile_num_ports(2, 1);  // 2 regfile, each with 1 port
+  opndcoll_rfu_t::uint_vector_t regfile_num_banks(2, 4);  // 2 regfile, each with 2 banks
+  opndcoll_rfu_t::uint_vector_t regfile_num_registers(2, 256);  // 2 regfile, each with 256 registers
+  m_operand_collector.init(m_config->gpgpu_num_reg_banks, num_regfiles, 
+    regfile_num_ports, regfile_num_banks, regfile_num_registers, this);
 
   // Weili: Initialize functional simd unit
   m_num_function_units =
@@ -3978,7 +3986,7 @@ void opndcoll_rfu_t::init(unsigned num_banks, unsigned num_regfiles,
   for (int i = 0; i < m_num_regfiles; i++) {
     arbiter_t& arbiter = m_arbiters[i];
     // Assuming all operand collectors are connected to all regfiles
-    arbiter.init(m_cu.size(), m_regfile_num_banks[i]);
+    arbiter.init(m_cu.size(), m_regfile_num_banks[i], i);
   }
 
   // for( unsigned n=0; n<m_num_ports;n++ )
@@ -4036,7 +4044,6 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
     // Weili: use the corresponding arbiter
     if (reg_num >= 0) {                   // valid register
       // Weili: Find regfile this reg num belong to and the corresponding arbiter
-      arbiter_t& arbiter_in_used;
       int true_reg_num = reg_num; // The actual reg number in the  register file this register belongs to
       int regfile_idx = -1; // The register file index
       for (int i = 0; i < m_num_regfiles; i++) {
@@ -4044,7 +4051,6 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
         if (true_reg_num - reg_count >= 0) {
           true_reg_num -= reg_count;
         } else {
-          arbiter_in_used = m_arbiters[i];
           regfile_idx = i;
           break;
         }
@@ -4052,6 +4058,7 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
 
       // Abort when the register number is out of all range
       assert(regfile_idx != -1);
+      arbiter_t& arbiter_in_used = m_arbiters[regfile_idx];
 
       // Find the bank for this register in its register file
       unsigned true_num_banks = m_regfile_num_banks[regfile_idx];
@@ -4067,7 +4074,7 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
         arbiter_in_used.allocate_bank_for_write(
             bank,
             op_t(&inst, reg_num, true_num_banks, m_bank_warp_shift, sub_core_model,
-                 true_num_banks_per_sched, inst.get_schd_id()));
+                 true_num_banks_per_sched, inst.get_schd_id(), regfile_idx));
         inst.arch_reg.dst[op] = -1;
       } else {
         // Cannot write back this inst at this moment due to bank conflict
@@ -4133,6 +4140,8 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
 }
 
 void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
+  // TODO: Weili: What about different register port?
+  // TODO: Weili: Need to 
   input_port_t &inp = m_in_ports[port_num];
   for (unsigned i = 0; i < inp.m_in.size(); i++) {
     // Weili: If an inst is ready to be issued
@@ -4146,7 +4155,15 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
             collector_unit_t *cu = &cu_set[k];
             // Weili: Try to find a cu to handle this ready inst
             allocated = cu->allocate(inp.m_in[i], inp.m_out[i]);
-            m_arbiter.add_read_requests(cu);
+            // Weili: Pass the cu read requests to all register file
+            // Weili: and each arbiter will filter out those not belong
+            // Weili: to it
+            for (auto it = m_arbiters.begin();
+                  it != m_arbiters.end();
+                  it++) {
+              arbiter_t& arbiter = *it;
+              arbiter.add_read_requests(cu);
+            }
             break;
           }
         }
@@ -4236,7 +4253,7 @@ void opndcoll_rfu_t::collector_unit_t::dump(
 
 void opndcoll_rfu_t::collector_unit_t::init(unsigned n, uint_vector_t& regfile_num_banks, 
                                             unsigned log2_warp_size, const core_config *config, 
-                                            opndcoll_rfu_t *rfu, bool m_sub_core_model, 
+                                            opndcoll_rfu_t *rfu, bool sub_core_model, 
                                             uint_vector_t& regfile_num_banks_per_sched) {
   m_rfu = rfu;
   m_cuid = n;
@@ -4245,7 +4262,7 @@ void opndcoll_rfu_t::collector_unit_t::init(unsigned n, uint_vector_t& regfile_n
   m_bank_warp_shift = log2_warp_size;
   m_sub_core_model = sub_core_model;
   m_regfile_num_banks = regfile_num_banks;
-  m_regfile_num_banks_per_sched = banks_per_regfile_per_sched;
+  m_regfile_num_banks_per_sched = regfile_num_banks_per_sched;
 }
 
 bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
@@ -4270,8 +4287,10 @@ bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
         // Weili: register file and find the register file index
         int true_reg_num = reg_num; // The actual reg number in the  register file this register belongs to
         int regfile_idx = -1; // The register file index
-        for (int i = 0; i < m_num_regfiles; i++) {
-          int reg_count = m_regfile_num_registers[i];
+
+        // Use rfu's members
+        for (int i = 0; i < m_rfu->m_num_regfiles; i++) {
+          int reg_count = m_rfu->m_regfile_num_registers[i];
           if (true_reg_num - reg_count >= 0) {
             true_reg_num -= reg_count;
           } else {
@@ -4289,7 +4308,7 @@ bool opndcoll_rfu_t::collector_unit_t::allocate(register_set *pipeline_reg_set,
 
         m_src_op[op] = op_t(this, op, true_reg_num, true_num_banks, m_bank_warp_shift,
                             m_sub_core_model, true_num_banks_per_sched,
-                            (*pipeline_reg)->get_schd_id());
+                            (*pipeline_reg)->get_schd_id(), regfile_idx);
         // Weili: Mark this operand as not ready
         m_not_ready.set(op);
       } else
