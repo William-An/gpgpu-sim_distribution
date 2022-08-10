@@ -42,6 +42,7 @@
 #include <set>
 #include <utility>
 #include <vector>
+#include <cstring>
 
 //#include "../cuda-sim/ptx.tab.h"
 
@@ -583,8 +584,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   typedef std::vector<unsigned int> uint_vector_t;
   void add_port(port_vector_t &input, port_vector_t &ouput,
                 uint_vector_t cu_sets);
-  void init(unsigned num_banks, unsigned num_regfiles, 
-            uint_vector_t &regfile_num_ports, uint_vector_t &regfile_num_banks, 
+  void init(unsigned num_regfiles, uint_vector_t &regfile_num_ports, 
+            uint_vector_t &regfile_num_banks, 
             uint_vector_t &regfile_num_registers,
             shader_core_ctx *shader);
 
@@ -613,6 +614,23 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       fprintf(fp, "\tArbiter %d:\n", i);
       m_arbiters[i].dump(fp);
     }
+  }
+
+  // Util func to parse vec string
+  static uint_vector_t string_to_uint_vec(char *str, char *delim) {
+    unsigned int tmp = 0;
+    uint_vector_t uvec;
+    // Copy string as strtok will modify original string
+    // See: https://stackoverflow.com/questions/9406475/why-is-strtok-changing-its-input-like-this
+    char *str_dup = strdup(str);
+    char *tok = strtok(str_dup, delim);
+    while(tok != NULL) {
+      sscanf(tok, "%d", &tmp);
+      uvec.push_back(tmp);
+      tok = strtok(NULL, delim);
+    }
+    free(str_dup);
+    return uvec;
   }
 
   shader_core_ctx *shader_core() { return m_shader; }
@@ -1635,6 +1653,12 @@ class shader_core_config : public core_config {
   unsigned int gpgpu_operand_collector_num_out_ports_mem;
   unsigned int gpgpu_operand_collector_num_out_ports_gen;
   unsigned int gpgpu_operand_collector_num_out_ports_int;
+
+  // Weili: Operand collector register file configurations
+  unsigned int gpgpu_operand_collector_num_regfiles;
+  char *gpgpu_operand_collector_regfile_num_ports_str; 
+  char *gpgpu_operand_collector_regfile_num_banks_str;
+  char *gpgpu_operand_collector_regfile_num_registers_str;
 
   int gpgpu_num_sp_units;
   int gpgpu_tensor_core_avail;

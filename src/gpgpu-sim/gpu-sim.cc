@@ -473,6 +473,32 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          OPT_INT32, &gpgpu_operand_collector_num_out_ports_gen,
                          "number of collector unit in ports (default = 0)",
                          "0");
+
+  // Weili: Start: Operand collector register file unit configurations
+  // Multiple registerfile operand collector design
+  option_parser_register(opp, "-gpgpu_operand_collector_num_regfiles", OPT_UINT32, 
+      &gpgpu_operand_collector_num_regfiles,
+      "number of register files in operand collector (default = 1)", "1");
+  option_parser_register(opp, "-gpgpu_operand_collector_regfile_num_ports",
+      OPT_CSTR, &gpgpu_operand_collector_regfile_num_ports_str, 
+      "number of ports for each registerfile in colon separated vector form, "
+      "i.e. 2:2 specified 2 ports each for the two registerfile",
+      "1");
+  option_parser_register(opp, "-gpgpu_operand_collector_regfile_num_banks",
+      OPT_CSTR, &gpgpu_operand_collector_regfile_num_banks_str, 
+      "number of banks for each registerfile in each core in colon separated vector form, "
+      "i.e. 2:2 specified 2 banks each for the two registerfiles",
+      "4");
+  // TODO: Weili: This might break the unlimited resource mode?
+  option_parser_register(opp, "-gpgpu_operand_collector_regfile_num_registers",
+      OPT_CSTR, &gpgpu_operand_collector_regfile_num_registers_str, 
+      "number of architectural registers for each register file in colon separated vector form, "
+      "i.e. 256:256 specified 256 registers each for the two registerfiles: "
+      "meaning R0~255 will be mapped to ports and banks of the first registerfile and "
+      "register R256~511 will be mapped to the second registerfile", 
+      "4");
+  // Weili: End
+
   option_parser_register(opp, "-gpgpu_coalesce_arch", OPT_INT32,
                          &gpgpu_coalesce_arch,
                          "Coalescing arch (GT200 = 13, Fermi = 20)", "13");

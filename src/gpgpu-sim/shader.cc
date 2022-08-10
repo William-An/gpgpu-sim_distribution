@@ -402,14 +402,16 @@ void shader_core_ctx::create_exec_pipeline() {
     }
   }
 
-  // TODO: Weili: Need to create option parser and pass from the config
-  // TODO: Weili: currently just hard-coded for testing
-  // m_operand_collector.init(m_config->gpgpu_num_reg_banks, this);
-  unsigned num_regfiles = 2;
-  opndcoll_rfu_t::uint_vector_t regfile_num_ports(2, 1);  // 2 regfile, each with 1 port
-  opndcoll_rfu_t::uint_vector_t regfile_num_banks(2, 4);  // 2 regfile, each with 2 banks
-  opndcoll_rfu_t::uint_vector_t regfile_num_registers(2, 256);  // 2 regfile, each with 256 registers
-  m_operand_collector.init(m_config->gpgpu_num_reg_banks, num_regfiles, 
+  opndcoll_rfu_t::uint_vector_t regfile_num_ports = opndcoll_rfu_t::string_to_uint_vec(m_config->gpgpu_operand_collector_regfile_num_ports_str, ":");
+  opndcoll_rfu_t::uint_vector_t regfile_num_banks = opndcoll_rfu_t::string_to_uint_vec(m_config->gpgpu_operand_collector_regfile_num_banks_str, ":");
+  opndcoll_rfu_t::uint_vector_t regfile_num_registers = opndcoll_rfu_t::string_to_uint_vec(m_config->gpgpu_operand_collector_regfile_num_registers_str, ":");
+
+  // Check if the configure align with the regfile count
+  assert(regfile_num_ports.size() == m_config->gpgpu_operand_collector_num_regfiles);
+  assert(regfile_num_banks.size() == m_config->gpgpu_operand_collector_num_regfiles);
+  assert(regfile_num_registers.size() == m_config->gpgpu_operand_collector_num_regfiles);
+
+  m_operand_collector.init(m_config->gpgpu_operand_collector_num_regfiles, 
     regfile_num_ports, regfile_num_banks, regfile_num_registers, this);
 
   // Weili: Initialize functional simd unit
@@ -3964,7 +3966,7 @@ void opndcoll_rfu_t::add_port(port_vector_t &input, port_vector_t &output,
   m_in_ports.push_back(input_port_t(input, output, cu_sets));
 }
 
-void opndcoll_rfu_t::init(unsigned num_banks, unsigned num_regfiles, 
+void opndcoll_rfu_t::init(unsigned num_regfiles, 
             uint_vector_t &regfile_num_ports, uint_vector_t &regfile_num_banks, uint_vector_t &regfile_num_registers,
             shader_core_ctx *shader) {
   m_shader = shader;
@@ -3982,7 +3984,7 @@ void opndcoll_rfu_t::init(unsigned num_banks, unsigned num_regfiles,
   // m_arbiter.init(m_cu.size(), num_banks);
 
   // Weili: init arbiter for each regfile
-  m_arbiters.reserve(m_num_regfiles);
+  m_arbiters.resize(m_num_regfiles);
   for (int i = 0; i < m_num_regfiles; i++) {
     arbiter_t& arbiter = m_arbiters[i];
     // Assuming all operand collectors are connected to all regfiles
@@ -4010,7 +4012,8 @@ void opndcoll_rfu_t::init(unsigned num_banks, unsigned num_regfiles,
   
   m_regfile_num_banks_per_sched.reserve(m_num_regfiles);
   for (int i = 0; i < m_num_regfiles; i++) {
-    m_regfile_num_banks_per_sched[i] = m_regfile_num_banks[i] / shader->get_config()->gpgpu_num_sched_per_core;
+    unsigned tmp = m_regfile_num_banks[i] / shader->get_config()->gpgpu_num_sched_per_core;
+    m_regfile_num_banks_per_sched.push_back(tmp);
   }
 
   for (unsigned j = 0; j < m_cu.size(); j++) {
