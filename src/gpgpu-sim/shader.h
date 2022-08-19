@@ -1896,10 +1896,12 @@ class shader_core_stats : public shader_core_stats_pod {
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_num_mem_committed =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
+    // Weili: Add another dimension on registerfile id for
+    // Weili: registerfile reads and writes
     m_read_regfile_acesses =
-        (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
+        (unsigned *)calloc(config->num_shader() * config->gpgpu_operand_collector_num_regfiles, sizeof(unsigned));
     m_write_regfile_acesses =
-        (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
+        (unsigned *)calloc(config->num_shader() * config->gpgpu_operand_collector_num_regfiles, sizeof(unsigned));
     m_non_rf_operands =
         (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
     m_n_diverge = (unsigned *)calloc(config->num_shader(), sizeof(unsigned));
@@ -2204,13 +2206,17 @@ class shader_core_ctx : public core_t {
   }
   void incexecstat(warp_inst_t *&inst);
 
-  void incregfile_reads(unsigned active_count) {
-    m_stats->m_read_regfile_acesses[m_sid] =
-        m_stats->m_read_regfile_acesses[m_sid] + active_count;
+  void incregfile_reads(unsigned regfile_id, unsigned active_count) {
+    unsigned num_regfiles = m_config->gpgpu_operand_collector_num_regfiles;
+    unsigned array_idx = m_sid * num_regfiles + regfile_id;
+    m_stats->m_read_regfile_acesses[array_idx] =
+        m_stats->m_read_regfile_acesses[array_idx] + active_count;
   }
-  void incregfile_writes(unsigned active_count) {
-    m_stats->m_write_regfile_acesses[m_sid] =
-        m_stats->m_write_regfile_acesses[m_sid] + active_count;
+  void incregfile_writes(unsigned regfile_id, unsigned active_count) {
+    unsigned num_regfiles = m_config->gpgpu_operand_collector_num_regfiles;
+    unsigned array_idx = m_sid * num_regfiles + regfile_id;
+    m_stats->m_write_regfile_acesses[array_idx] =
+        m_stats->m_write_regfile_acesses[array_idx] + active_count;
   }
   void incnon_rf_operands(unsigned active_count) {
     m_stats->m_non_rf_operands[m_sid] =
