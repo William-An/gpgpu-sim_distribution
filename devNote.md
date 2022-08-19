@@ -16,3 +16,7 @@
 4. `gpgpu_operand_collector_regfile_num_registers UINT32:UINT32:...`: colon separated vector to specify number of architectural registers for each regfile
     1. `256:256` specified 256 registers each for the two registerfiles
     2. meaning `R0~255` will be mapped to ports and banks of the first registerfile and register `R256~511` will be mapped to the second registerfile
+
+## Run env setup script from zsh
+
+`BASH_SOURCE=~/SST-Integration/env-setup/11.0_env_setup.sh emulate zsh -c '. "$BASH_SOURCE"'`

@@ -2656,11 +2656,15 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
 */
 void ldst_unit::cycle() {
   writeback();
-  // TODO: Weili: Different RF should have different ports?
-  // TODO: Weili: Need to make sure the stepping of collector only
-  // TODO: Weili: process the RF with respect to the port number (by passing the variable `i` here to step)
-  for (int i = 0; i < m_config->reg_file_port_throughput; ++i)
-    m_operand_collector->step(i);
+  // Weili: Step each registerfile's arbiter separately
+  for (unsigned regfile_id = 0; regfile_id < m_operand_collector->get_num_regfiles(); regfile_id++) {
+    unsigned curr_regfile_num_ports = (m_operand_collector->get_regfile_num_ports())[regfile_id];
+
+    // Weili: Step each registerfile according to its port amount
+    for (unsigned port_id = 0; port_id < curr_regfile_num_ports; port_id++) {
+      m_operand_collector->step(regfile_id);
+    }
+  }
   for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++)
     if (m_pipeline_reg[stage]->empty() && !m_pipeline_reg[stage + 1]->empty())
       move_warp(m_pipeline_reg[stage], m_pipeline_reg[stage + 1]);
@@ -4161,6 +4165,9 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
             // Weili: Pass the cu read requests to all register file
             // Weili: and each arbiter will filter out those not belong
             // Weili: to it
+            // Weili: No need to skip arbiter here as we just add pending
+            //        read requests to the arbiter, actual read is done
+            //        in `opndcoll_rfu_t::allocate_reads()`
             for (auto it = m_arbiters.begin();
                   it != m_arbiters.end();
                   it++) {
@@ -4178,14 +4185,17 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
   }
 }
 
-void opndcoll_rfu_t::allocate_reads() {
+void opndcoll_rfu_t::allocate_reads(unsigned regfile_id) {
   // process read requests that do not have conflicts
-  // TODO: Weili: Process arbiters associated with the port
+  // Weili: Process arbiters associated with the register file
   for (auto it_arbiter = m_arbiters.begin(); 
        it_arbiter != m_arbiters.end(); 
        it_arbiter++) {
-
+    // Skip aribiter not associated with this registerfile
     arbiter_t& arbiter = *it_arbiter;
+    if (arbiter.m_regfile_id != regfile_id)
+      continue;
+
     std::list<op_t> allocated = arbiter.allocate_reads(); // Get the ready operands
     std::map<unsigned, op_t> read_ops;
     for (std::list<op_t>::iterator r = allocated.begin(); r != allocated.end();

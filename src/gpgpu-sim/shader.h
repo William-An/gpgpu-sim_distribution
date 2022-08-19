@@ -592,14 +592,14 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   // modifiers
   bool writeback(warp_inst_t &warp);
 
-  void step(unsigned regfile_port_id) {
-    // TODO: Weili: Only process the register file associated with the current regfile port id
+  void step(unsigned regfile_id) {
+    // Weili: Only process the register file associated with the current regfile port id
     dispatch_ready_cu();
-    allocate_reads();
+    allocate_reads(regfile_id);
     for (unsigned p = 0; p < m_in_ports.size(); p++) allocate_cu(p);
 
-    // Weili: banks should be free in next cycle
-    process_banks();
+    // Weili: banks should be free after each port is done
+    process_banks(regfile_id);
   }
 
   void dump(FILE *fp) const {
@@ -615,6 +615,12 @@ class opndcoll_rfu_t {  // operand collector based register file unit
       m_arbiters[i].dump(fp);
     }
   }
+
+  unsigned get_num_regfiles() { return m_num_regfiles; }
+  uint_vector_t get_regfile_num_ports() { return m_regfile_num_ports; }
+  uint_vector_t get_regfile_num_banks() { return m_regfile_num_banks; }
+  uint_vector_t get_regfile_num_registers() { return m_regfile_num_registers; }
+  uint_vector_t get_regfile_num_banks_per_sched() { return m_regfile_num_banks_per_sched; }
 
   // Util func to parse vec string
   static uint_vector_t string_to_uint_vec(char *str, char *delim) {
@@ -636,18 +642,24 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   shader_core_ctx *shader_core() { return m_shader; }
 
  private:
-  void process_banks() { 
-    for (int i = 0; i < m_num_regfiles; i++)
-      m_arbiters[i].reset_alloction(); 
+  void process_banks(unsigned regfile_id) { 
+    // for (unsigned i = 0; i < m_num_regfiles; i++)
+    //   m_arbiters[i].reset_alloction(); 
+    // Only free the current regfile's banks
+    // as each time this function is called is
+    // on one port of one regfile
+    m_arbiters[regfile_id].reset_alloction(); 
   }
 
   // Dispatch the insts that finish collecting all operands
+  // Should be call at each time a registerfile port is stepped
+  // as the CU should behave independently with the registerfile
   void dispatch_ready_cu(); 
   // From input port, find an inst that is ready to enter
   // operand collector stage and assign a cu to it
   void allocate_cu(unsigned port);
   // process read requests that do not have conflicts
-  void allocate_reads();
+  void allocate_reads(unsigned regfile_port_id);
 
   // types
 
@@ -899,6 +911,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     int **_request;
 
     int m_regfile_id;  // Register file id this arbiter belongs to
+
+    friend class opndcoll_rfu_t;
   };
 
   class input_port_t {

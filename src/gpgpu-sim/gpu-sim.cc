@@ -371,6 +371,7 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "Mapping from local memory space address to simulated "
                          "GPU physical address space (default = enabled)",
                          "1");
+  // TODO: Weili: Need to deprecate this option as we have multi-regfile
   option_parser_register(opp, "-gpgpu_num_reg_banks", OPT_INT32,
                          &gpgpu_num_reg_banks,
                          "Number of register banks (default = 8)", "8");
@@ -573,6 +574,8 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(
       opp, "-gpgpu_inst_fetch_throughput", OPT_INT32, &inst_fetch_throughput,
       "the number of fetched intruction per warp each cycle", "1");
+  
+  // TODO: Weili: Need to deprecate this option
   option_parser_register(opp, "-gpgpu_reg_file_port_throughput", OPT_INT32,
                          &reg_file_port_throughput,
                          "the number ports of the register file", "1");
