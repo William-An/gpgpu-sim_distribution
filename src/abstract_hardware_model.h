@@ -928,10 +928,12 @@ class inst_t {
   }
   bool is_load() const {
     return (op == LOAD_OP || op == TENSOR_CORE_LOAD_OP ||
+            op == UNIFORM_UNIT_LOAD_OP ||
             memory_op == memory_load);
   }
   bool is_store() const {
     return (op == STORE_OP || op == TENSOR_CORE_STORE_OP ||
+            op == UNIFORM_UNIT_STORE_OP ||
             memory_op == memory_store);
   }
   unsigned get_num_operands() const { return num_operands; }

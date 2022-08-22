@@ -1284,9 +1284,13 @@ class int_unit : public pipelined_simd_unit {
         return false;
       case TENSOR_CORE_LOAD_OP:
         return false;
+      case UNIFORM_UNIT_LOAD_OP:
+        return false;
       case STORE_OP:
         return false;
       case TENSOR_CORE_STORE_OP:
+        return false;
+      case UNIFORM_UNIT_STORE_OP:
         return false;
       case MEMORY_BARRIER_OP:
         return false;
@@ -1315,9 +1319,13 @@ class sp_unit : public pipelined_simd_unit {
         return false;
       case TENSOR_CORE_LOAD_OP:
         return false;
+      case UNIFORM_UNIT_LOAD_OP:
+        return false;
       case STORE_OP:
         return false;
       case TENSOR_CORE_STORE_OP:
+        return false;
+      case UNIFORM_UNIT_STORE_OP:
         return false;
       case MEMORY_BARRIER_OP:
         return false;
@@ -1382,9 +1390,13 @@ class ldst_unit : public pipelined_simd_unit {
         break;
       case TENSOR_CORE_LOAD_OP:
         break;
+      case UNIFORM_UNIT_LOAD_OP:
+        break;
       case STORE_OP:
         break;
       case TENSOR_CORE_STORE_OP:
+        break;
+      case UNIFORM_UNIT_STORE_OP:
         break;
       case MEMORY_BARRIER_OP:
         break;
