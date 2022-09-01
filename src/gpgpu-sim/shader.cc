@@ -4057,7 +4057,7 @@ int register_bank(int regnum, int wid, unsigned num_banks,
 
 bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
   assert(!inst.empty());
-  // std::list<unsigned> regs = m_shader->get_regs_written(inst);
+  std::list<unsigned> regs = m_shader->get_regs_written(inst);
   for (unsigned op = 0; op < MAX_REG_OPERANDS; op++) {
     int reg_num = inst.arch_reg.dst[op];  // this math needs to match that used
                                           // in function_info::ptx_decode_inst
@@ -4099,50 +4099,69 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
         inst.arch_reg.dst[op] = -1;
       } else {
         // Cannot write back this inst at this moment due to bank conflict
+        // TODO: Weili: Do we need to cancel our prior bank assignment?
         return false;
       }
 
-      if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-        unsigned active_count = 0;
-        for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-            i = i + m_shader->get_config()->n_regfile_gating_group) {
-          for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
-              j++) {
-            if (inst.get_active_mask().test(i + j)) {
-              active_count += m_shader->get_config()->n_regfile_gating_group;
-              break;
-            }
-          }
-        }
-        m_shader->incregfile_writes(regfile_idx, active_count);
-      } else {
-        m_shader->incregfile_writes(regfile_idx, 
-            m_shader->get_config()->warp_size);  // inst.active_count());
-      }
+      // This loop might ends early, we cannot record the reg writes until
+      // we know it will definitively finish reg writeback
+      // if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
+      //   unsigned active_count = 0;
+      //   for (unsigned i = 0; i < m_shader->get_config()->warp_size;
+      //       i = i + m_shader->get_config()->n_regfile_gating_group) {
+      //     for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
+      //         j++) {
+      //       if (inst.get_active_mask().test(i + j)) {
+      //         active_count += m_shader->get_config()->n_regfile_gating_group;
+      //         break;
+      //       }
+      //     }
+      //   }
+      //   m_shader->incregfile_writes(regfile_idx, active_count);
+      // } else {
+      //   m_shader->incregfile_writes(regfile_idx, 
+      //       m_shader->get_config()->warp_size);  // inst.active_count());
+      // }
     }
   }
 
   // Update stats on registerfile writes
-  // Weili: move these to above for loop
-  // for (unsigned i = 0; i < (unsigned)regs.size(); i++) {
-  //   if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-  //     unsigned active_count = 0;
-  //     for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-  //          i = i + m_shader->get_config()->n_regfile_gating_group) {
-  //       for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
-  //            j++) {
-  //         if (inst.get_active_mask().test(i + j)) {
-  //           active_count += m_shader->get_config()->n_regfile_gating_group;
-  //           break;
-  //         }
-  //       }
-  //     }
-  //     m_shader->incregfile_writes(active_count);
-  //   } else {
-  //     m_shader->incregfile_writes(
-  //         m_shader->get_config()->warp_size);  // inst.active_count());
-  //   }
-  // }
+  for (auto it = regs.begin(); it != regs.end(); it++) {
+    // TODO: Make this reg id computation into a function
+    int reg_num = *it;
+    int true_reg_num = reg_num; // The actual reg number in the  register file this register belongs to
+    int regfile_idx = -1; // The register file index
+    for (int i = 0; i < m_num_regfiles; i++) {
+      int reg_count = m_regfile_num_registers[i];
+      if (true_reg_num - reg_count >= 0) {
+        true_reg_num -= reg_count;
+      } else {
+        regfile_idx = i;
+        break;
+      }
+    }
+
+    // Abort when the register number is out of all range
+    assert(regfile_idx != -1);
+    
+    if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
+      unsigned active_count = 0;
+      for (unsigned i = 0; i < m_shader->get_config()->warp_size;
+           i = i + m_shader->get_config()->n_regfile_gating_group) {
+        for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
+             j++) {
+          if (inst.get_active_mask().test(i + j)) {
+            active_count += m_shader->get_config()->n_regfile_gating_group;
+            break;
+          }
+        }
+      }
+      m_shader->incregfile_writes(regfile_idx, active_count);
+    } else {
+      m_shader->incregfile_writes(regfile_idx, 
+          m_shader->get_config()->warp_size);  // inst.active_count());
+    }
+  }
   return true;
 }
 

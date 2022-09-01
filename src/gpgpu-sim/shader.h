@@ -182,6 +182,7 @@ class shd_warp_t {
 
   void ibuffer_fill(unsigned slot, const warp_inst_t *pI) {
     assert(slot < IBUFFER_SIZE);
+    assert(pI != NULL);
     m_ibuffer[slot].m_inst = pI;
     m_ibuffer[slot].m_valid = true;
     m_next = 0;
