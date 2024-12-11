@@ -2421,7 +2421,6 @@ void SST_gpgpusim_numcores_equal_check(unsigned sst_numcores) {
       ->SST_gpgpusim_numcores_equal_check(sst_numcores);
 }
 
-// TODO Weili: Unify SST and GPGPUSim apis?
 uint64_t cudaMallocSST(void **devPtr, size_t size) {
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
@@ -2891,21 +2890,6 @@ __host__ const char *CUDARTAPI cudaGetErrorString(cudaError_t error) {
 }
 
 // SST specific cuda apis
-// TODO Weili: Unify SST and GPGPUSim apis?
-// Weili: Use the regular cudaConfigureCall instead in SST, this following
-// Weili: function could be removed
-__host__ cudaError_t CUDARTAPI cudaConfigureCallSST(dim3 gridDim, dim3 blockDim,
-                                                    size_t sharedMem = 0,
-                                                    cudaStream_t stream = 0) {
-  printf("From cudaConfigureCallSST\n");
-  // weird setting of stream structs
-  struct CUstream_st value;
-  struct CUstream_st *s;
-  s = (CUstream_st *)malloc(sizeof(CUstream_st));
-  memcpy(s, &value, sizeof(CUstream_st));
-  return cudaConfigureCallInternal(gridDim, blockDim, sharedMem, s);
-}
-
 __host__ cudaError_t CUDARTAPI cudaSetupArgumentSST(uint64_t arg,
                                                     uint8_t value[200],
                                                     size_t size,
@@ -2927,7 +2911,6 @@ __host__ cudaError_t CUDARTAPI cudaSetupArgument(const void *arg, size_t size,
 }
 
 // SST specific cuda apis
-// TODO Weili: Unify SST and GPGPUSim apis?
 __host__ cudaError_t CUDARTAPI cudaLaunchSST(uint64_t hostFun) {
   return cudaLaunchInternal((char *)hostFun);
 }
@@ -3822,7 +3805,6 @@ void gpgpu_context::cuobjdumpParseBinary(unsigned int handle) {
 
 extern "C" {
 
-// TODO Weili: Unify SST and GPGPUSim apis?
 void **CUDARTAPI __cudaRegisterFatBinarySST(const char *fn) {
   return cudaRegisterFatBinaryInternal(fn, NULL);
 }
@@ -3859,7 +3841,6 @@ cudaError_t CUDARTAPI __cudaPopCallConfiguration(dim3 *gridDim, dim3 *blockDim,
   return g_last_cudaError = cudaSuccess;
 }
 
-// TODO Weili: Unify SST and GPGPUSim apis?
 void CUDARTAPI __cudaRegisterFunctionSST(unsigned fatCubinHandle,
                                          uint64_t hostFun,
                                          char deviceFun[512]) {

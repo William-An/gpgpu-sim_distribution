@@ -2625,6 +2625,7 @@ class simt_core_cluster {
   void cache_invalidate();
   bool icnt_injection_buffer_full(unsigned size, bool write);
   void icnt_inject_request_packet(class mem_fetch *mf);
+  void update_icnt_stats(class mem_fetch *mf);
 
   // for perfect memory interface
   bool response_queue_full() {

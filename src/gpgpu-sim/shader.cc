@@ -4592,7 +4592,6 @@ bool sst_simt_core_cluster::SST_injection_buffer_full(unsigned size, bool write,
                                                       mem_access_type type) {
   switch (type) {
     case CONST_ACC_R:
-    case TEXTURE_ACC_R:
     case INST_ACC_R: {
       return response_queue_full();
       break;
@@ -4605,6 +4604,30 @@ bool sst_simt_core_cluster::SST_injection_buffer_full(unsigned size, bool write,
 }
 
 void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
+  // Update stats based on mf type
+  update_icnt_stats(mf);
+
+  // The packet size varies depending on the type of request:
+  // - For write request and atomic request, the packet contains the data
+  // - For read request (i.e. not write nor atomic), the packet only has control
+  // metadata
+  unsigned int packet_size = mf->size();
+  if (!mf->get_is_write() && !mf->isatomic()) {
+    packet_size = mf->get_ctrl_size();
+  }
+  m_stats->m_outgoing_traffic_stats->record_traffic(mf, packet_size);
+  unsigned destination = mf->get_sub_partition_id();
+  mf->set_status(IN_ICNT_TO_MEM,
+                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  if (!mf->get_is_write() && !mf->isatomic())
+    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
+                mf->get_ctrl_size());
+  else
+    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
+                mf->size());
+}
+
+void simt_core_cluster::update_icnt_stats(class mem_fetch *mf) {
   // stats
   if (mf->get_is_write())
     m_stats->made_write_mfs++;
@@ -4649,71 +4672,12 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
     default:
       assert(0);
   }
-
-  // The packet size varies depending on the type of request:
-  // - For write request and atomic request, the packet contains the data
-  // - For read request (i.e. not write nor atomic), the packet only has control
-  // metadata
-  unsigned int packet_size = mf->size();
-  if (!mf->get_is_write() && !mf->isatomic()) {
-    packet_size = mf->get_ctrl_size();
-  }
-  m_stats->m_outgoing_traffic_stats->record_traffic(mf, packet_size);
-  unsigned destination = mf->get_sub_partition_id();
-  mf->set_status(IN_ICNT_TO_MEM,
-                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-  if (!mf->get_is_write() && !mf->isatomic())
-    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
-                mf->get_ctrl_size());
-  else
-    ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
-                mf->size());
 }
 
 void sst_simt_core_cluster::icnt_inject_request_packet_to_SST(
     class mem_fetch *mf) {
-  // stats
-  if (mf->get_is_write())
-    m_stats->made_write_mfs++;
-  else
-    m_stats->made_read_mfs++;
-  switch (mf->get_access_type()) {
-    case CONST_ACC_R:
-      m_stats->gpgpu_n_mem_const++;
-      break;
-    case TEXTURE_ACC_R:
-      m_stats->gpgpu_n_mem_texture++;
-      break;
-    case GLOBAL_ACC_R:
-      m_stats->gpgpu_n_mem_read_global++;
-      break;
-    case GLOBAL_ACC_W:
-      m_stats->gpgpu_n_mem_write_global++;
-      break;
-    case LOCAL_ACC_R:
-      m_stats->gpgpu_n_mem_read_local++;
-      break;
-    case LOCAL_ACC_W:
-      m_stats->gpgpu_n_mem_write_local++;
-      break;
-    case INST_ACC_R:
-      m_stats->gpgpu_n_mem_read_inst++;
-      break;
-    case L1_WRBK_ACC:
-      m_stats->gpgpu_n_mem_write_global++;
-      break;
-    case L2_WRBK_ACC:
-      m_stats->gpgpu_n_mem_l2_writeback++;
-      break;
-    case L1_WR_ALLOC_R:
-      m_stats->gpgpu_n_mem_l1_write_allocate++;
-      break;
-    case L2_WR_ALLOC_R:
-      m_stats->gpgpu_n_mem_l2_write_allocate++;
-      break;
-    default:
-      assert(0);
-  }
+  // Update stats
+  update_icnt_stats(mf);
 
   // The packet size varies depending on the type of request:
   // - For write request and atomic request, the packet contains the data
@@ -4728,7 +4692,6 @@ void sst_simt_core_cluster::icnt_inject_request_packet_to_SST(
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   switch (mf->get_access_type()) {
     case CONST_ACC_R:
-    case TEXTURE_ACC_R:
     case INST_ACC_R: {
       push_response_fifo(mf);
       break;
