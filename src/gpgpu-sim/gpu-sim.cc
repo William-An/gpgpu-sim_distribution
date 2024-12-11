@@ -1179,8 +1179,7 @@ bool sst_gpgpu_sim::active() {
     return false;
   if (m_config.gpu_deadlock_detect && gpu_deadlock) return false;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
-    if (m_cluster[i]->get_not_completed() > 0) 
-      return true;
+    if (m_cluster[i]->get_not_completed() > 0) return true;
   if (get_more_cta_left()) return true;
   return false;
 }
