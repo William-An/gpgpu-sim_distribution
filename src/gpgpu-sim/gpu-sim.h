@@ -78,6 +78,7 @@ extern tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
  * @return false
  */
 extern bool is_SST_buffer_full(unsigned core_id);
+__attribute__((weak)) bool is_SST_buffer_full(unsigned core_id) { return false; }
 
 /**
  * @brief Send loads to SST memory backend
@@ -89,7 +90,8 @@ extern bool is_SST_buffer_full(unsigned core_id);
  */
 extern void send_read_request_SST(unsigned core_id, uint64_t address,
                                   size_t size, void *mem_req);
-
+__attribute__((weak)) void send_read_request_SST(unsigned core_id, uint64_t address,
+                                   size_t size, void *mem_req) {}
 /**
  * @brief Send stores to SST memory backend
  *
@@ -100,6 +102,8 @@ extern void send_read_request_SST(unsigned core_id, uint64_t address,
  */
 extern void send_write_request_SST(unsigned core_id, uint64_t address,
                                    size_t size, void *mem_req);
+__attribute__((weak)) void send_write_request_SST(unsigned core_id, uint64_t address,
+                                   size_t size, void *mem_req) {}
 
 enum dram_ctrl_t { DRAM_FIFO = 0, DRAM_FRFCFS = 1 };
 
